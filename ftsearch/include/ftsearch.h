@@ -43,6 +43,8 @@ public:
 
     void reset();
 
+    const SeqInfo get_info(const size_t vec_idx) const;
+
     // perform batch search
     // similar to faiss
     // return tuple for simplicity
@@ -76,7 +78,7 @@ public:
 
     // map the vector in flat_embs to SeqInfo
     // (total number of frames)
-    std::vector<SeqInfo *> idx2seq_info;
+    std::vector<size_t> idx2seq_info;
 
     size_t vec_dim;
 };

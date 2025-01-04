@@ -33,11 +33,16 @@ void FTSearch::add_seq(float *arr, size_t n, std::string seq_id)
     seq_infos.push_back({start_idx, end_idx, seq_id});
 
     // pointer to the stored seq_info
-    SeqInfo *seq_info_ptr = &seq_infos.back();
+    // SeqInfo *seq_info_ptr = &seq_infos.back();
+    // SeqInfo *seq_info_ptr = &seq_infos[seq_infos.size() - 1];
 
-    std::vector<SeqInfo *> idx_mapping(n, seq_info_ptr);
+    size_t seq_info_idx = seq_infos.size() - 1;
 
-    idx2seq_info.insert(idx2seq_info.end(), idx_mapping.begin(), idx_mapping.end());
+    // std::vector<SeqInfo *> idx_mapping(n, seq_info_ptr);
+
+    // idx2seq_info.insert(idx2seq_info.end(), idx_mapping.begin(), idx_mapping.end());
+
+    idx2seq_info.resize(n + idx2seq_info.size(), seq_info_idx);
 
     assert(idx2seq_info.size() == num_vecs());
 }
@@ -335,4 +340,9 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const f
 std::vector<float> FTSearch::get_vec(size_t vec_idx) const
 {
     return std::vector<float>(flat_embs.data() + vec_idx * vec_dim, flat_embs.data() + (vec_idx + 1) * vec_dim);
+}
+
+const SeqInfo FTSearch::get_info(const size_t vec_idx) const
+{
+    return seq_infos[idx2seq_info[vec_idx]];
 }

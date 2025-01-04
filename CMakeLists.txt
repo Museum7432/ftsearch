@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.25)
 
 
 project(ftsearch)
@@ -76,5 +76,5 @@ target_link_libraries(ftsearch_module PUBLIC ftsearch)
 
 install(TARGETS ftsearch_module LIBRARY DESTINATION ftsearch)
 
-# add_executable(ftsearch_test misc/test.cpp)
-# target_link_libraries(ftsearch_test ftsearch)
+add_executable(ftsearch_test misc/test.cpp)
+target_link_libraries(ftsearch_test ftsearch)
