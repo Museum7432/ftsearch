@@ -29,8 +29,6 @@ public:
     FTSearch(size_t vec_dim)
         : vec_dim(vec_dim) {}
 
-    size_t get_size() const;
-
     size_t num_seqs() const;
     // number of vectors
     size_t num_vecs() const;
@@ -51,12 +49,23 @@ public:
     std::tuple<std::vector<float>, std::vector<size_t>> search(const float *Q, size_t nq, size_t topk) const;
 
     // perform sequence search (also called Temporal search)
-    // return tuple for simplicity
-    std::tuple<std::vector<float>, std::vector<size_t>> seq_search(const float *Q, size_t nq, size_t topk) const;
+    // min_item_dist is the minimum distance in indice between two selected vectors (consecutively)
+    // discount_rate: penalize large gap between two selected vectors
+    std::tuple<std::vector<float>, std::vector<size_t>> seq_search(
+        const float *Q,
+        const size_t nq,
+        const size_t topk,
+        const size_t min_item_dist = 1,
+        const float discount_rate = 1) const;
 
-
+    std::vector<float> get_vec(size_t vec_idx) const;
 
     // private:
+
+    // compute the similarity between seq and queries
+    // and save it into S, assumes that S have enough space.
+    // used internally
+    void _compute_similarity_per_seq(const size_t start_idx, const size_t end_idx, const float *Q, const size_t nq, float *S) const;
     // concatenate all videos' embeddings into a single array for
     // faster access time
     // (total number of frames x vec_dim)

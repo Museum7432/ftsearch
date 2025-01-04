@@ -74,7 +74,7 @@ target_link_libraries(ftsearch utils)
 pybind11_add_module(ftsearch_module ftsearch/src/bindings.cpp)
 target_link_libraries(ftsearch_module PUBLIC ftsearch)
 
-install(TARGETS ftsearch_module LIBRARY DESTINATION lib)
+install(TARGETS ftsearch_module LIBRARY DESTINATION ftsearch)
 
 # add_executable(ftsearch_test misc/test.cpp)
 # target_link_libraries(ftsearch_test ftsearch)

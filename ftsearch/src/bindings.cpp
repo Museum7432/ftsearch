@@ -1,4 +1,6 @@
 #include "ftsearch.h" // Make sure to include your class's header
+#include <cstddef>
+#include <pybind11/cast.h>
 #include <pybind11/numpy.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h> // For automatic conversion of vectors
@@ -35,7 +37,7 @@ auto search_with_numpy(const FTSearch &self, py::array_t<float> Q, size_t topk)
     return py::make_tuple(distances_array, indices_array);
 }
 
-auto seq_search_with_numpy(const FTSearch &self, py::array_t<float> Q, size_t topk)
+auto seq_search_with_numpy(const FTSearch &self, py::array_t<float> Q, size_t topk, size_t min_item_dist = 1, float discount_rate = 1)
 {
 
     py::buffer_info buf = Q.request();
@@ -54,7 +56,7 @@ auto seq_search_with_numpy(const FTSearch &self, py::array_t<float> Q, size_t to
         throw std::runtime_error("Input array's dimension does not match vec_dim");
     }
 
-    auto result = self.seq_search(ptr, nq, topk);
+    auto result = self.seq_search(ptr, nq, topk, min_item_dist, discount_rate);
 
     const auto &distances = std::get<0>(result);
     const auto &indices = std::get<1>(result);
@@ -65,7 +67,7 @@ auto seq_search_with_numpy(const FTSearch &self, py::array_t<float> Q, size_t to
     return py::make_tuple(distances_array, indices_array);
 }
 
-void add_sequence(FTSearch &ftsearch, py::array_t<float> array, const std::string &seq_name)
+void add_sequence(FTSearch &self, py::array_t<float> array, const std::string &seq_name)
 {
     py::buffer_info buf_info = array.request();
 
@@ -78,22 +80,34 @@ void add_sequence(FTSearch &ftsearch, py::array_t<float> array, const std::strin
     size_t n = buf_info.shape[0];
     size_t vec_dim = buf_info.shape[1];
 
-    if (vec_dim != ftsearch.vec_dim)
+    if (vec_dim != self.vec_dim)
     {
         throw std::runtime_error("Input vector dimension does not match initialized dimension.");
     }
 
-    ftsearch.add_seq(ptr, n, seq_name);
+    self.add_seq(ptr, n, seq_name);
+}
+
+auto get_vec(const FTSearch &self, size_t vec_idx)
+{
+
+    auto vec = self.get_vec(vec_idx);
+
+    py::array_t<float> vec_np(vec.size(), vec.data());
+
+    return vec_np;
 }
 
 PYBIND11_MODULE(ftsearch_module, m)
 {
     py::class_<FTSearch>(m, "FTSearch")
         .def(py::init<size_t>(), py::arg("vec_dim"))
-        .def("get_size", &FTSearch::get_size)
+        .def("num_seqs", &FTSearch::num_seqs)
+        .def("num_vecs", &FTSearch::num_vecs)
+        .def("get_vec", &get_vec, py::arg("vec_idx"))
         .def("add_seq", &add_sequence, py::arg("arr"), py::arg("seq_name"))
         .def("reset", &FTSearch::reset)
         .def("search", &search_with_numpy, py::arg("Q"), py::arg("topk"))
-        .def("seq_search", &seq_search_with_numpy, py::arg("Q"), py::arg("topk"))
+        .def("seq_search", &seq_search_with_numpy, py::arg("Q"), py::arg("topk"), py::arg("min_item_dist") = 1, py::arg("discount_rate") = 1)
         .def_readwrite("vec_dim", &FTSearch::vec_dim);
 }

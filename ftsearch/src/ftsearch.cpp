@@ -7,11 +7,10 @@
 #include <limits>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "utils.h"
-
-size_t FTSearch::get_size() const { return flat_embs.size() / vec_dim; }
 
 size_t FTSearch::num_seqs() const { return seq_infos.size(); }
 size_t FTSearch::num_vecs() const { return flat_embs.size() / vec_dim; }
@@ -66,6 +65,28 @@ struct Item
     }
 };
 
+void FTSearch::_compute_similarity_per_seq(const size_t start_idx, const size_t end_idx, const float *Q, const size_t nq, float *S) const
+{
+    for (size_t emb_idx = start_idx; emb_idx <= end_idx; emb_idx++)
+    {
+        const float *embs_ptr = flat_embs.data() + emb_idx * vec_dim;
+
+        if (nq > 20)
+        {
+            cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S + emb_idx, vec_dim);
+        }
+        else
+        {
+            for (size_t q_idx = 0; q_idx < nq; q_idx++)
+            {
+                const float *query_ptr = Q + q_idx * vec_dim;
+
+                S[emb_idx + q_idx * num_vecs()] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
+            }
+        }
+    }
+}
+
 std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::search(const float *Q, size_t nq, size_t topk) const
 {
     // loop through all seq_infos
@@ -112,24 +133,7 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::search(const float
                 SeqInfo seq_info = seq_infos[seq_idx];
                 // TODO: perform seq filtering here (base on the string recorded in seq_info)
                 // calculate the similarities into S
-                for (size_t emb_idx = seq_info.start_idx; emb_idx <= seq_info.end_idx; emb_idx++)
-                {
-                    const float *embs_ptr = flat_embs.data() + emb_idx * vec_dim;
-
-                    if (nq > 20)
-                    {
-                        cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S.data() + emb_idx, vec_dim);
-                    }
-                    else
-                    {
-                        for (size_t q_idx = 0; q_idx < nq; q_idx++)
-                        {
-                            const float *query_ptr = Q + q_idx * vec_dim;
-
-                            S[emb_idx + q_idx * n_vecs] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
-                        }
-                    }
-                }
+                _compute_similarity_per_seq(seq_info.start_idx, seq_info.end_idx, Q, nq, S.data());
 
                 // separate the computation of similarity and heap to optimize the memory access pattern
                 for (size_t q_idx = 0; q_idx < nq; q_idx++)
@@ -194,7 +198,7 @@ struct SeqItem
     }
 };
 
-std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const float *Q, size_t nq, size_t topk) const
+std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const float *Q, const size_t nq, const size_t topk, const size_t min_item_dist, const float discount_rate) const
 {
     const size_t n_seqs = num_seqs(),
                  n_vecs = num_vecs();
@@ -230,24 +234,7 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const f
                 const SeqInfo seq_info = seq_infos[seq_idx];
                 // TODO: perform seq filtering here (base on the string recorded in seq_info)
                 // calculate the similarities into S
-                for (size_t emb_idx = seq_info.start_idx; emb_idx <= seq_info.end_idx; emb_idx++)
-                {
-                    const float *embs_ptr = flat_embs.data() + emb_idx * vec_dim;
-
-                    if (nq > 20)
-                    {
-                        cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S.data() + emb_idx, vec_dim);
-                    }
-                    else
-                    {
-                        for (size_t q_idx = 0; q_idx < nq; q_idx++)
-                        {
-                            const float *query_ptr = Q + q_idx * vec_dim;
-
-                            S[emb_idx + q_idx * n_vecs] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
-                        }
-                    }
-                }
+                _compute_similarity_per_seq(seq_info.start_idx, seq_info.end_idx, Q, nq, S.data());
 
                 // temporal_matching
                 const size_t seq_len = seq_info.end_idx - seq_info.start_idx + 1;
@@ -257,6 +244,7 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const f
                 // float at indices i is the maximum sum of similarities of all sequences that stop at indice i
                 // create a new copy
                 std::vector<float> score(S.data() + seq_info.start_idx, S.data() + seq_info.end_idx + 1);
+                std::vector<float> score_temp(S.data() + seq_info.start_idx, S.data() + seq_info.end_idx + 1);
 
                 for (size_t q_idx = 1; q_idx < nq; q_idx++)
                 {
@@ -264,24 +252,32 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const f
                     float max_score = score[0];
                     size_t max_score_idx = 0;
 
-                    for (size_t i = 0; i < seq_len; i++)
+                    const float *S_seq_q = S.data() + seq_info.start_idx + q_idx * n_vecs;
+
+                    for (size_t i = 0; i + min_item_dist < seq_len; i++)
                     {
+                        max_score *= discount_rate;
+
                         if (score[i] > max_score)
                         {
                             max_score = score[i];
                             max_score_idx = i;
                         }
 
-                        score[i] = max_score + S[seq_info.start_idx + i + q_idx * n_vecs];
+                        // item at indice (i + min_item_dist) can only select
+                        // indicies <= i
+                        score_temp[i + min_item_dist] = max_score + S_seq_q[i + min_item_dist];
 
                         // max_score_idx is relative to the start of the seq
-                        traces[i + (q_idx - 1) * seq_len] = max_score_idx + seq_info.start_idx;
+                        traces[i + min_item_dist + (q_idx - 1) * seq_len] = max_score_idx + seq_info.start_idx;
                     }
+                    // important
+                    std::swap(score, score_temp);
                 }
 
                 // then save the result
                 // only trace the seq_ids when we can push into the queue
-                for (size_t i = 0; i < seq_len; i++)
+                for (size_t i = min_item_dist * (nq - 1); i < seq_len; i++)
                 {
                     // if (score[i] > 499)std::cout << "1" << std::endl;
                     // if score is lower than the lowest item in heap
@@ -334,4 +330,9 @@ std::tuple<std::vector<float>, std::vector<size_t>> FTSearch::seq_search(const f
     }
 
     return std::make_tuple(sims, ids);
+}
+
+std::vector<float> FTSearch::get_vec(size_t vec_idx) const
+{
+    return std::vector<float>(flat_embs.data() + vec_idx * vec_dim, flat_embs.data() + (vec_idx + 1) * vec_dim);
 }
