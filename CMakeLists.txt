@@ -13,6 +13,8 @@ include(FetchContent)
 # find_package(Python COMPONENTS Interpreter Development)
 # find_package(pybind11 CONFIG)
 
+# set(CMAKE_FIND_DEBUG_MODE ON)
+
 add_subdirectory(pybind11)
 
 # ###################################################################
@@ -52,24 +54,34 @@ add_subdirectory(pybind11)
 ###################################################################
 # exe
 ###################################################################
+
+
+
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake)
+
+# OpenBLAS_INCLUDE_DIR
+# OpenBLAS_LIB
+find_package(OpenBLAS REQUIRED)
+
+find_package(OpenMP REQUIRED)
+
+
+
 include_directories(
     # ${CUSTOM_OPENBLAS_incl}
+    ${OpenBLAS_INCLUDE_DIR}
     ftsearch/include
-    )
-
-# OpenBLAS::OpenBLAS
-find_package(OpenBLAS REQUIRED)
-find_package(OpenMP REQUIRED)
+)
 
 add_library(utils ftsearch/src/utils.cpp)
 
 add_library(ftsearch ftsearch/src/ftsearch.cpp)
 
 # target_link_libraries(utils ${CUSTOM_OPENBLAS_lib} OpenMP::OpenMP_CXX)
-target_link_libraries(utils OpenBLAS::OpenBLAS OpenMP::OpenMP_CXX)
+target_link_libraries(utils ${OpenBLAS_LIB} OpenMP::OpenMP_CXX)
+# target_link_libraries(utils OpenBLAS::OpenBLAS OpenMP::OpenMP_CXX)
 
 target_link_libraries(ftsearch utils)
-
 
 pybind11_add_module(ftsearch_module ftsearch/src/bindings.cpp)
 target_link_libraries(ftsearch_module PUBLIC ftsearch)
