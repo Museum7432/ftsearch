@@ -346,3 +346,8 @@ const SeqInfo FTSearch::get_info(const size_t vec_idx) const
 {
     return seq_infos[idx2seq_info[vec_idx]];
 }
+
+const SeqInfo FTSearch::get_seq_info(const size_t seq_idx) const
+{
+    return seq_infos[seq_idx];
+}

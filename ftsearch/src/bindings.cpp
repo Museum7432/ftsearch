@@ -109,6 +109,17 @@ auto get_info(const FTSearch &self, size_t vec_idx)
     return info_dict;
 }
 
+auto get_seq_info(const FTSearch &self, size_t seq_idx)
+{
+    auto info = self.get_seq_info(seq_idx);
+    py::dict info_dict;
+
+    info_dict["start_idx"] = info.start_idx;
+    info_dict["end_idx"] = info.end_idx;
+    info_dict["seq_name"] = info.seq_name;
+    return info_dict;
+}
+
 PYBIND11_MODULE(ftsearch_module, m)
 {
     py::class_<FTSearch>(m, "FTSearch")
@@ -116,6 +127,7 @@ PYBIND11_MODULE(ftsearch_module, m)
         .def("num_seqs", &FTSearch::num_seqs)
         .def("num_vecs", &FTSearch::num_vecs)
         .def("get_info", &get_info, py::arg("vec_idx"))
+        .def("get_seq_info", &get_seq_info, py::arg("seq_idx"))
         .def("get_vec", &get_vec, py::arg("vec_idx"))
         .def("add_seq", &add_sequence, py::arg("arr"), py::arg("seq_name"))
         .def("reset", &FTSearch::reset)

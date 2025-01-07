@@ -43,7 +43,10 @@ public:
 
     void reset();
 
+    // get info of a vector
     const SeqInfo get_info(const size_t vec_idx) const;
+
+    const SeqInfo get_seq_info(const size_t seq_idx) const;
 
     // perform batch search
     // similar to faiss
