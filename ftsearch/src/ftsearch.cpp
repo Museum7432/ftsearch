@@ -72,13 +72,15 @@ struct Item
 
 void FTSearch::_compute_similarity_per_seq(const size_t start_idx, const size_t end_idx, const float *Q, const size_t nq, float *S) const
 {
+    // we only use nested omp loop when a seq is too long
+#pragma omp parallel for if (end_idx - start_idx > 5000)
     for (size_t emb_idx = start_idx; emb_idx <= end_idx; emb_idx++)
     {
         const float *embs_ptr = flat_embs.data() + emb_idx * vec_dim;
 
-        if (nq > 20)
+        if (nq > 500)
         {
-            cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S + emb_idx, vec_dim);
+            cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S + emb_idx, num_vecs());
         }
         else
         {
