@@ -120,12 +120,63 @@ auto get_seq_info(const FTSearch &self, size_t seq_idx)
     return info_dict;
 }
 
+// SimpleIndex
+void add_numpy(SimpleIndex &self, py::array_t<float> array)
+{
+    py::buffer_info buf_info = array.request();
+
+    if (buf_info.ndim != 2)
+    {
+        throw std::runtime_error("Input array must be 2D.");
+    }
+
+    float *ptr = static_cast<float *>(buf_info.ptr);
+    size_t n = buf_info.shape[0];
+    size_t vec_dim = buf_info.shape[1];
+
+    if (vec_dim != self.vec_dim)
+    {
+        throw std::runtime_error("Input vector dimension does not match initialized dimension.");
+    }
+
+    self.add(ptr, n);
+}
+auto search_with_numpy_SimpleIndex(const SimpleIndex &self, py::array_t<float> Q, size_t topk)
+{
+
+    py::buffer_info buf = Q.request();
+
+    if (buf.ndim != 2)
+    {
+        throw std::runtime_error("Input array must be 2D");
+    }
+
+    auto ptr = static_cast<float *>(buf.ptr);
+    size_t nq = buf.shape[0];
+    size_t dim = buf.shape[1];
+
+    if (dim != self.vec_dim)
+    {
+        throw std::runtime_error("Input array's dimension does not match vec_dim");
+    }
+
+    auto result = self.search(ptr, nq, topk);
+
+    const auto &distances = std::get<0>(result);
+    const auto &indices = std::get<1>(result);
+
+    py::array_t<float> distances_array({nq, topk}, distances.data());
+    py::array_t<size_t> indices_array({nq, topk}, indices.data());
+
+    return py::make_tuple(distances_array, indices_array);
+}
+
 PYBIND11_MODULE(ftsearch_module, m)
 {
     py::class_<FTSearch>(m, "FTSearch")
         .def(py::init<size_t>(), py::arg("vec_dim"))
-        .def("num_seqs", &FTSearch::num_seqs)
-        .def("num_vecs", &FTSearch::num_vecs)
+        .def_property_readonly("n_seqs", &FTSearch::num_seqs)
+        .def_property_readonly("n_vecs", &FTSearch::num_vecs)
         .def("get_info", &get_info, py::arg("vec_idx"))
         .def("get_seq_info", &get_seq_info, py::arg("seq_idx"))
         .def("get_vec", &get_vec, py::arg("vec_idx"))
@@ -133,5 +184,13 @@ PYBIND11_MODULE(ftsearch_module, m)
         .def("reset", &FTSearch::reset)
         .def("search", &search_with_numpy, py::arg("Q"), py::arg("topk"))
         .def("seq_search", &seq_search_with_numpy, py::arg("Q"), py::arg("topk"), py::arg("min_item_dist") = 1, py::arg("discount_rate") = 1)
-        .def_readwrite("vec_dim", &FTSearch::vec_dim);
+        .def_readonly("vec_dim", &FTSearch::vec_dim);
+
+    py::class_<SimpleIndex>(m, "SimpleIndex")
+        .def(py::init<size_t>(), py::arg("vec_dim"))
+        .def_property_readonly("n_vecs", &SimpleIndex::num_vecs)
+        .def("add", &add_numpy, py::arg("arr"))
+        .def("reset", &SimpleIndex::reset)
+        .def("search", &search_with_numpy_SimpleIndex, py::arg("Q"), py::arg("topk"))
+        .def_readonly("vec_dim", &SimpleIndex::vec_dim);
 }

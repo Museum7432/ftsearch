@@ -353,3 +353,120 @@ const SeqInfo FTSearch::get_seq_info(const size_t seq_idx) const
 {
     return seq_infos[seq_idx];
 }
+
+// SimpleIndex
+void SimpleIndex::add(float *arr, size_t n)
+{
+    if (n == 0)
+        return;
+
+    flat_embs.insert(flat_embs.end(), arr, arr + n * vec_dim);
+}
+size_t SimpleIndex::num_vecs() const { return flat_embs.size() / vec_dim; }
+
+void SimpleIndex::reset()
+{
+    flat_embs.clear();
+}
+
+std::tuple<std::vector<float>, std::vector<size_t>> SimpleIndex::search(const float *Q, size_t nq, size_t topk) const
+{
+    const size_t n_vecs = num_vecs();
+
+    // parwise similarities matrix
+    // TODO: allow the user to cache this
+    // (nq, num_vecs)
+    std::vector<float> S(nq * n_vecs);
+
+    // separate heap for each query
+    std::vector<BoundedMinHeap<Item>> result_heap;
+    for (int i = 0; i < nq; i++)
+        result_heap.emplace_back(topk);
+
+#pragma omp parallel
+    {
+        const size_t num_threads = omp_get_num_threads(),
+                     thread_id = omp_get_thread_num();
+
+        // chunking
+        const size_t base_batch_size = n_vecs / num_threads;
+        const size_t remainder = n_vecs % num_threads;
+
+        const size_t start_idx = thread_id * base_batch_size + std::min(thread_id, remainder);
+        const size_t end_idx = start_idx + base_batch_size + (thread_id < remainder ? 1 : 0) - 1;
+
+        if (start_idx < n_vecs)
+        {
+            // stored the topk result from the computed S
+            std::vector<BoundedMinHeap<Item>> local_result_heap;
+            // separate heap for each query
+            for (int i = 0; i < nq; i++)
+            {
+                local_result_heap.emplace_back(topk);
+            }
+
+            // we only use nested omp loop when a seq is too long
+#pragma omp parallel for if (end_idx - start_idx > 5000)
+            for (size_t vec_idx = start_idx; vec_idx <= end_idx; vec_idx++)
+            {
+                const float *embs_ptr = flat_embs.data() + vec_idx * vec_dim;
+
+                if (nq > 500)
+                {
+                    cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S.data() + vec_idx, num_vecs());
+                }
+                else
+                {
+                    for (size_t q_idx = 0; q_idx < nq; q_idx++)
+                    {
+                        const float *query_ptr = Q + q_idx * vec_dim;
+
+                        S[vec_idx + q_idx * num_vecs()] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
+                    }
+                }
+            }
+
+            // separate the computation of similarity and heap to optimize the memory access pattern
+            for (size_t q_idx = 0; q_idx < nq; q_idx++)
+            {
+                for (size_t vec_idx = start_idx; vec_idx <= end_idx; vec_idx++)
+                {
+                    local_result_heap[q_idx].push({vec_idx, S[vec_idx + q_idx * n_vecs]});
+                }
+            }
+
+// combine topK in a critical region
+// this should only add a few ms in latency
+#pragma omp critical
+            {
+                for (size_t q_idx = 0; q_idx < nq; q_idx++)
+                {
+                    while (!local_result_heap[q_idx].isEmpty())
+                    {
+                        auto item = local_result_heap[q_idx].toppop();
+
+                        result_heap[q_idx].push(item);
+                    }
+                }
+            }
+        }
+    }
+
+    std::vector<float> sims(nq * topk, 0);
+    std::vector<size_t> ids(nq * topk, -1);
+
+    for (size_t q_idx = 0; q_idx < nq; q_idx++)
+    {
+        const size_t n_res = result_heap[q_idx].size();
+
+        for (size_t i = 0; i < n_res; i++)
+        {
+            auto item = result_heap[q_idx].toppop();
+
+            sims[q_idx * topk + n_res - 1 - i] = item.sim;
+            ids[q_idx * topk + n_res - 1 - i] = item.id;
+        }
+    }
+
+    return std::make_tuple(sims, ids);
+}

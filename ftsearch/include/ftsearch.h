@@ -86,4 +86,27 @@ public:
     size_t vec_dim;
 };
 
+// simple flat index for comparison
+class SimpleIndex
+{
+public:
+    SimpleIndex(size_t vec_dim)
+        : vec_dim(vec_dim) {}
+
+    void add(float *arr, size_t n);
+
+    // number of vectors
+    size_t num_vecs() const;
+
+    void reset();
+
+    std::tuple<std::vector<float>, std::vector<size_t>> search(const float *Q, size_t nq, size_t topk) const;
+
+    size_t vec_dim;
+    // concatenate all videos' embeddings into a single array for
+    // faster access time
+    // (total number of frames x vec_dim)
+    std::vector<float> flat_embs;
+};
+
 #endif
