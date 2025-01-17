@@ -30,7 +30,7 @@ add_subdirectory(pybind11)
 # ExternalProject_Add(
 #     OpenBLAS_single_thread
 #     GIT_REPOSITORY https://github.com/OpenMathLib/OpenBLAS.git
-#     GIT_TAG 24c5152fbd8027a39759acf261e1595326ab0114
+#     GIT_TAG v0.3.29
 #     CMAKE_ARGS -DUSE_OPENMP=1 -DCMAKE_INSTALL_PREFIX=${CUSTOM_OPENBLAS_DIR}
 #     # BUILD_COMMAND make USE_THREAD=0
 #     # INSTALL_COMMAND make install

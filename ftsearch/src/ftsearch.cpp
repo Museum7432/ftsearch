@@ -12,6 +12,18 @@
 
 #include "utils.h"
 
+void safePrefetch(const float *array, size_t size)
+{
+    for (size_t i = 0; i < size; ++i)
+    {
+        // Ensure we are within bounds before prefetching
+        if (i + 4 < size)
+        {
+            __builtin_prefetch(&array[i + 4], 0, 1); // Prefetch for read
+        }
+    }
+}
+
 size_t FTSearch::num_seqs() const { return seq_infos.size(); }
 size_t FTSearch::num_vecs() const { return flat_embs.size() / vec_dim; }
 
@@ -376,12 +388,15 @@ std::tuple<std::vector<float>, std::vector<size_t>> SimpleIndex::search(const fl
     // parwise similarities matrix
     // TODO: allow the user to cache this
     // (nq, num_vecs)
-    std::vector<float> S(nq * n_vecs);
+    // std::vector<float> S(nq * n_vecs);
 
     // separate heap for each query
     std::vector<BoundedMinHeap<Item>> result_heap;
     for (int i = 0; i < nq; i++)
         result_heap.emplace_back(topk);
+
+    auto original_openblas_num_threads = openblas_get_num_threads();
+    openblas_set_num_threads(1);
 
 #pragma omp parallel
     {
@@ -405,25 +420,45 @@ std::tuple<std::vector<float>, std::vector<size_t>> SimpleIndex::search(const fl
                 local_result_heap.emplace_back(topk);
             }
 
-            // we only use nested omp loop when a seq is too long
-#pragma omp parallel for if (end_idx - start_idx > 5000)
-            for (size_t vec_idx = start_idx; vec_idx <= end_idx; vec_idx++)
-            {
-                const float *embs_ptr = flat_embs.data() + vec_idx * vec_dim;
+            const size_t num_vecs_local = end_idx - start_idx + 1;
+            std::vector<float> S_local(nq * num_vecs_local);
 
-                if (nq > 500)
+            // cblas_sgemm is really expensive
+            if (nq < 15)
+            {
+                // #pragma omp parallel for if (end_idx - start_idx > 5000)
+                for (size_t vec_idx = start_idx; vec_idx <= end_idx; vec_idx++)
                 {
-                    cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, S.data() + vec_idx, num_vecs());
-                }
-                else
-                {
+
+                    const float *embs_ptr = flat_embs.data() + vec_idx * vec_dim;
+
+                    float *re_ptr = S_local.data() + vec_idx - start_idx;
+
+                    // cblas_sgemv(CblasRowMajor, CblasNoTrans, nq, vec_dim, 1, Q, vec_dim, embs_ptr, 1, 0, re_ptr, num_vecs_local);
+
                     for (size_t q_idx = 0; q_idx < nq; q_idx++)
                     {
                         const float *query_ptr = Q + q_idx * vec_dim;
 
-                        S[vec_idx + q_idx * num_vecs()] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
+                        re_ptr[q_idx * num_vecs_local] = cblas_sdot(vec_dim, embs_ptr, 1, query_ptr, 1);
                     }
                 }
+            }
+            else
+            {
+                // embs: (num_vecs_local, vec_dim)
+                // Q: (nq, vec_dim)
+                // res: (nq, num_vecs_local)
+                // Q * embs.T
+
+                cblas_sgemm(
+                    CblasRowMajor, CblasNoTrans, CblasTrans,
+                    nq, num_vecs_local, vec_dim,
+                    1,
+                    Q, vec_dim,
+                    flat_embs.data() + start_idx * vec_dim, vec_dim,
+                    0,
+                    S_local.data(), num_vecs_local);
             }
 
             // separate the computation of similarity and heap to optimize the memory access pattern
@@ -431,7 +466,7 @@ std::tuple<std::vector<float>, std::vector<size_t>> SimpleIndex::search(const fl
             {
                 for (size_t vec_idx = start_idx; vec_idx <= end_idx; vec_idx++)
                 {
-                    local_result_heap[q_idx].push({vec_idx, S[vec_idx + q_idx * n_vecs]});
+                    local_result_heap[q_idx].push({vec_idx, S_local[vec_idx - start_idx + q_idx * num_vecs_local]});
                 }
             }
 
@@ -451,6 +486,8 @@ std::tuple<std::vector<float>, std::vector<size_t>> SimpleIndex::search(const fl
             }
         }
     }
+
+    openblas_set_num_threads(original_openblas_num_threads);
 
     std::vector<float> sims(nq * topk, 0);
     std::vector<size_t> ids(nq * topk, -1);
