@@ -54,3 +54,6 @@ print(re[1])
 # you can also get infos from the returned indices
 print(ft.get_info(23123))
 ```
+
+# Performance
+Until issue [4121](https://github.com/facebookresearch/faiss/issues/4121#issue-2778286481) is fixed. This search function (both functions) is 2 to 3 times faster than Faiss' flat index searcher.
