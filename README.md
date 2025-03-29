@@ -1,4 +1,6 @@
-# WIP
+# About
+
+This is the C++ implementation of the temporal search in the [Fusionista: Fusion of 3-D Information of Video in Retrieval System](https://doi.org/10.1007/978-981-96-2074-6_33) paper
 
 # Instalation
 require `openblas`, `openmp` and `cmake`.
