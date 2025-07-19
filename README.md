@@ -11,6 +11,11 @@ then install with:
 or
 ```pip install git+https://github.com/Museum7432/ftsearch.git```
 
+# sequental search (or temporal search)
+I cannot share the frontend code, but here is a picture that demonstrates what it do.
+<img width="1063" height="652" alt="temporal_search" src="https://github.com/user-attachments/assets/aea2d0ac-9781-45c2-975f-8789385d073b" />
+
+
 # Usage
 it is similar to Faiss, but designed more for searching on videos (a sequence of encoded vectors of keyframes with OpenClip for example).
 
