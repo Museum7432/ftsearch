@@ -1,0 +1,25 @@
+[workspace]
+authors = ["khangld <khangld@mailbox.org>"]
+channels = ["https://prefix.dev/conda-forge"]
+name = "SeqRetrieval"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[feature.cuda.system-requirements]
+cuda = "12"
+
+[feature.cuda.dependencies]
+cuda-toolkit = ">=12.9.0,<13"
+
+[feature.other.dependencies]
+cmake = "*"
+openmp = "*"
+openblas = "*"
+
+[environments]
+gpu = ["cuda", "other"]
+cpu = [ "other"]
+default = ["other"]
+
+[dependencies]
+ninja = ">=1.13.0,<2"
